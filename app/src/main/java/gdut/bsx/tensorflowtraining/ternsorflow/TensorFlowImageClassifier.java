@@ -16,6 +16,8 @@ limitations under the License.
 package gdut.bsx.tensorflowtraining.ternsorflow;
 
 import android.graphics.Bitmap;
+import android.os.Environment;
+
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 
 import java.io.File;
@@ -74,8 +76,8 @@ public class TensorFlowImageClassifier implements Classifier {
         c.inputName = inputName;
         c.outputName = outputName;
         c.tags = labels;
-        String path = modelPath + modelFilename;
-        String pathScore = modelPath + modelScoreFileName;
+        String path = Environment.getExternalStorageDirectory()+modelPath + modelFilename;
+        String pathScore = Environment.getExternalStorageDirectory()+modelPath + modelScoreFileName;
         try {
             c.inferenceInterface = new TensorFlowInferenceInterface(new FileInputStream(new File(path)));
             c.inferenceInterfaceScore = new TensorFlowInferenceInterface(new FileInputStream(new File(pathScore)));

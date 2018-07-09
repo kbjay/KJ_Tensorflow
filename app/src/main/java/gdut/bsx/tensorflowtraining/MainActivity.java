@@ -42,7 +42,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 
-import gdut.bsx.tensorflowtraining.download.DownLoadUtils;
+import gdut.bsx.tensorflowtraining.download.DownEntity;
+import gdut.bsx.tensorflowtraining.download.DownLoadManager;
 import gdut.bsx.tensorflowtraining.ternsorflow.Classifier;
 import gdut.bsx.tensorflowtraining.ternsorflow.TensorFlowImageClassifier;
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
@@ -59,9 +60,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private static final float IMAGE_STD = 1;
     private static final String INPUT_NAME = "input:0";
     private static final String OUTPUT_NAME = "MobilenetV1/Predictions/Reshape_1:0";
-    private static final String MODEL_FILE = "label_classify_frozen_graph_510202.pb";
-    private static final String MODEL_FILE_SCORE = "score_classify_frozen_graph_699609.pb";
-    public static  String MODEL_PATH ;
+    public static final String PD_SCORE_URI = "https://csminiimagehostint.blob.core.chinacloudapi.cn/xiaoicetranslator/score_classify_frozen_graph_699609.pb";
+    public static final String PD_MODEL_URI = "https://csminiimagehostint.blob.core.chinacloudapi.cn/xiaoicetranslator/label_classify_frozen_graph_510202.pb";
+    public static final String PD_SCORE_FILE_NAME = "score_classify_frozen_graph_699609.pb";
+    public static final String PD_MODEL_FILE_NAME = "label_classify_frozen_graph_510202.pb";
+    public static final String DOWN_PAHT="/tensorDemo/";
+
     private static final String[] LABLES = new String[]{
             "animal",
             "architecture",
@@ -87,7 +91,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             finish();
         }
         setContentView(R.layout.activity_main);
-        MODEL_PATH = this.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS).getAbsolutePath() ;
         findViewById(R.id.iv_choose_picture).setOnClickListener(this);
         findViewById(R.id.iv_take_photo).setOnClickListener(this);
         findViewById(R.id.button).setOnClickListener(this);
@@ -116,21 +119,21 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     MessageQueue.IdleHandler idleHandler = new MessageQueue.IdleHandler() {
         @Override
         public boolean queueIdle() {
-//            if (classifier == null) {
-//                // 创建 Classifier
-//                classifier = TensorFlowImageClassifier.create(MODEL_PATH,
-//                        MODEL_FILE,MODEL_FILE_SCORE, LABLES, INPUT_SIZE, INPUT_NAME, OUTPUT_NAME);
-//            }
-//            // 初始化线程池
-//            executor = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
-//                @Override
-//                public Thread newThread(@NonNull Runnable r) {
-//                    Thread thread = new Thread(r);
-//                    thread.setDaemon(true);
-//                    thread.setName("ThreadPool-ImageClassifier");
-//                    return thread;
-//                }
-//            });
+            if (classifier == null) {
+                // 创建 Classifier
+                classifier = TensorFlowImageClassifier.create(DOWN_PAHT,
+                        PD_MODEL_FILE_NAME,PD_SCORE_FILE_NAME, LABLES, INPUT_SIZE, INPUT_NAME, OUTPUT_NAME);
+            }
+            // 初始化线程池
+            executor = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
+                @Override
+                public Thread newThread(@NonNull Runnable r) {
+                    Thread thread = new Thread(r);
+                    thread.setDaemon(true);
+                    thread.setName("ThreadPool-ImageClassifier");
+                    return thread;
+                }
+            });
             // 请求权限
             requestMultiplePermissions();
             return false;
@@ -269,19 +272,43 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     private void downPd() {
-        DownLoadUtils downLoadUtils = new DownLoadUtils();
-        downLoadUtils.initData(this);
-        downLoadUtils.setOnDownLoad(new DownLoadUtils.OnDownLoad() {
+        DownEntity modeDownEntity = new DownEntity(PD_MODEL_URI, DOWN_PAHT, PD_MODEL_FILE_NAME, new DownEntity.OnDownloadListener() {
             @Override
-            public void onSuccess() {
-                Log.d("kb_jay","onSuccess!!!!!!!!");
+            public void onDownloadSuccess() {
             }
 
             @Override
-            public void onFailed() {
+            public void onDownloading(int progress) {
+                Log.d("kb_jay",progress+"==");
+            }
+
+            @Override
+            public void onDownloadFailed() {
+                Log.d("kb_jay","onDownloadFailed model");
+
             }
         });
-        downLoadUtils.downLoad();
+
+        DownEntity scoreDownEntity = new DownEntity(PD_SCORE_URI, DOWN_PAHT, PD_SCORE_FILE_NAME, new DownEntity.OnDownloadListener() {
+            @Override
+            public void onDownloadSuccess() {
+            }
+
+            @Override
+            public void onDownloading(int progress) {
+                Log.d("kb_jay",progress+"**");
+            }
+
+            @Override
+            public void onDownloadFailed() {
+                Log.d("kb_jay","onDownloadFailed score");
+
+            }
+        });
+        ArrayList<DownEntity> downEntities = new ArrayList<>();
+        downEntities.add(scoreDownEntity);
+        downEntities.add(modeDownEntity);
+        DownLoadManager.getInstance().addTasks(downEntities).startDownLoad();
     }
 
     /**
