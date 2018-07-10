@@ -20,12 +20,14 @@ import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.FileProvider;
+import android.support.v4.widget.ContentLoadingProgressBar;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.app.AppCompatDelegate;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -46,6 +48,7 @@ import gdut.bsx.tensorflowtraining.download.DownEntity;
 import gdut.bsx.tensorflowtraining.download.DownLoadManager;
 import gdut.bsx.tensorflowtraining.ternsorflow.Classifier;
 import gdut.bsx.tensorflowtraining.ternsorflow.TensorFlowImageClassifier;
+
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
     public static final String TAG = MainActivity.class.getSimpleName();
@@ -64,7 +67,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public static final String PD_MODEL_URI = "https://csminiimagehostint.blob.core.chinacloudapi.cn/xiaoicetranslator/label_classify_frozen_graph_510202.pb";
     public static final String PD_SCORE_FILE_NAME = "score_classify_frozen_graph_699609.pb";
     public static final String PD_MODEL_FILE_NAME = "label_classify_frozen_graph_510202.pb";
-    public static final String DOWN_PAHT="/tensorDemo/";
+    public static final String DOWN_PAHT = "/tensorDemo/";
 
     private static final String[] LABLES = new String[]{
             "animal",
@@ -81,9 +84,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private TextView result;
     private ImageView ivPicture;
     private Classifier classifier;
+
+
     static {
         AppCompatDelegate.setCompatVectorFromResourcesEnabled(true);
     }
+
+    private View mBtDownLoad;
+    private boolean isModelDownFinish;
+    private boolean isScoreDownFinish;
+
+    private ProgressBar mLoading;
+    private View mRlLoading;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -91,13 +104,31 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             finish();
         }
         setContentView(R.layout.activity_main);
+
         findViewById(R.id.iv_choose_picture).setOnClickListener(this);
         findViewById(R.id.iv_take_photo).setOnClickListener(this);
-        findViewById(R.id.button).setOnClickListener(this);
+        mRlLoading = findViewById(R.id.rl_loading);
+        mBtDownLoad = findViewById(R.id.button);
+        mBtDownLoad.setOnClickListener(this);
+        mLoading = (ProgressBar) findViewById(R.id.progressBar);
+        if (isPdExist()) {
+            mBtDownLoad.setVisibility(View.GONE);
+        } else {
+            mBtDownLoad.setVisibility(View.VISIBLE);
+        }
         ivPicture = findViewById(R.id.iv_picture);
         result = findViewById(R.id.tv_classifier_info);
         // 避免耗时任务占用 CPU 时间片造成UI绘制卡顿，提升启动页面加载速度
         Looper.myQueue().addIdleHandler(idleHandler);
+    }
+
+    private boolean isPdExist() {
+        File file1 = new File(Environment.getExternalStorageDirectory() + DOWN_PAHT + PD_MODEL_FILE_NAME);
+        File file2 = new File(Environment.getExternalStorageDirectory() + DOWN_PAHT + PD_SCORE_FILE_NAME);
+        if (file1.exists() && file1.isFile() && file2.exists() && file2.isFile()) {
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -106,6 +137,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         savedInstanceState.putParcelable(CURRENT_TAKE_PHOTO_URI, currentTakePhotoUri);
         super.onSaveInstanceState(savedInstanceState);
     }
+
     @Override
     protected void onRestoreInstanceState(Bundle savedInstanceState) {
         super.onRestoreInstanceState(savedInstanceState);
@@ -113,17 +145,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             currentTakePhotoUri = savedInstanceState.getParcelable(CURRENT_TAKE_PHOTO_URI);
         }
     }
+
     /**
      * 主线程消息队列空闲时（视图第一帧绘制完成时）处理耗时事件
      */
     MessageQueue.IdleHandler idleHandler = new MessageQueue.IdleHandler() {
         @Override
         public boolean queueIdle() {
-            if (classifier == null) {
-                // 创建 Classifier
-                classifier = TensorFlowImageClassifier.create(DOWN_PAHT,
-                        PD_MODEL_FILE_NAME,PD_SCORE_FILE_NAME, LABLES, INPUT_SIZE, INPUT_NAME, OUTPUT_NAME);
-            }
+            initTensor();
             // 初始化线程池
             executor = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
                 @Override
@@ -139,6 +168,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             return false;
         }
     };
+
+    private void initTensor() {
+        if (classifier == null && isPdExist()) {
+            // 创建 Classifier
+            classifier = TensorFlowImageClassifier.create(DOWN_PAHT,
+                    PD_MODEL_FILE_NAME, PD_SCORE_FILE_NAME, LABLES, INPUT_SIZE, INPUT_NAME, OUTPUT_NAME);
+        }
+    }
+
     /**
      * 请求存储和相机权限
      */
@@ -159,6 +197,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             ActivityCompat.requestPermissions(this, params, PERMISSIONS_REQUEST);
         }
     }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode == PERMISSIONS_REQUEST) {
@@ -272,36 +311,76 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     private void downPd() {
+        showLoading();
         DownEntity modeDownEntity = new DownEntity(PD_MODEL_URI, DOWN_PAHT, PD_MODEL_FILE_NAME, new DownEntity.OnDownloadListener() {
             @Override
             public void onDownloadSuccess() {
+                Log.d("kb_jay", "onDownloadSuccess model");
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        isModelDownFinish = true;
+                        if (isScoreDownFinish) {
+                            hideLoaing();
+                            initTensor();
+                            mBtDownLoad.setVisibility(View.GONE);
+                        }
+                    }
+                });
+
             }
 
             @Override
             public void onDownloading(int progress) {
-                Log.d("kb_jay",progress+"==");
+                Log.d("kb_jay", progress + "==");
             }
 
             @Override
             public void onDownloadFailed() {
-                Log.d("kb_jay","onDownloadFailed model");
-
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        hideLoaing();
+                        Toast.makeText(MainActivity.this, "下载失败", Toast.LENGTH_SHORT).show();
+                        Log.d("kb_jay", "onDownloadFailed model");
+                    }
+                });
             }
         });
 
         DownEntity scoreDownEntity = new DownEntity(PD_SCORE_URI, DOWN_PAHT, PD_SCORE_FILE_NAME, new DownEntity.OnDownloadListener() {
             @Override
             public void onDownloadSuccess() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        isScoreDownFinish = true;
+                        Log.d("kb_jay", "onDownloadSuccess score");
+
+                        if (isModelDownFinish) {
+                            mBtDownLoad.setVisibility(View.GONE);
+                            hideLoaing();
+                            initTensor();
+                        }
+                    }
+                });
             }
 
             @Override
             public void onDownloading(int progress) {
-                Log.d("kb_jay",progress+"**");
+                Log.d("kb_jay", progress + "**");
             }
 
             @Override
             public void onDownloadFailed() {
-                Log.d("kb_jay","onDownloadFailed score");
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        hideLoaing();
+                        Toast.makeText(MainActivity.this, "下载失败", Toast.LENGTH_SHORT).show();
+                        Log.d("kb_jay", "onDownloadFailed score");
+                    }
+                });
 
             }
         });
@@ -309,6 +388,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         downEntities.add(scoreDownEntity);
         downEntities.add(modeDownEntity);
         DownLoadManager.getInstance().addTasks(downEntities).startDownLoad();
+    }
+
+    private void hideLoaing() {
+        mRlLoading.setVisibility(View.GONE);
+        mLoading.setVisibility(View.GONE);
+    }
+
+    private void showLoading() {
+        mRlLoading.setVisibility(View.VISIBLE);
+        mLoading.setVisibility(View.VISIBLE);
     }
 
     /**
@@ -424,13 +513,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            String r ="";
-                            if(results.size()==2){
-                                r=results.get(0)+"\r\n"+results.get(1);
-                            }else{
-                                r="识别结果错误 list size!!";
+                            String r = "";
+                            if (results.size() == 2) {
+                                r = results.get(0) + "\r\n" + results.get(1);
+                            } else {
+                                r = "识别结果错误 list size!!";
                             }
-                            result.setBackgroundColor(Color.argb(128,128,128,128));
+                            result.setBackgroundColor(Color.argb(128, 128, 128, 128));
                             result.setText(r);
                         }
                     });
@@ -456,8 +545,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         int height = bitmap.getHeight();
         float scaleWidth = ((float) size) / width;
         float scaleHeight = ((float) size) / height;
+
+
         Matrix matrix = new Matrix();
         matrix.postScale(scaleWidth, scaleHeight);
         return Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true);
     }
+
+
+
 }
