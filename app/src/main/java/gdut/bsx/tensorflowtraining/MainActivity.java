@@ -33,6 +33,7 @@ import android.widget.Toast;
 
 import com.bumptech.glide.load.DataSource;
 import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.load.engine.bitmap_recycle.BitmapPool;
 import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.target.Target;
 
@@ -506,8 +507,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             public void run() {
                 try {
                     Log.i(TAG, Thread.currentThread().getName() + " startImageClassifier");
-                    Bitmap croppedBitmap = getScaleBitmap(bitmap, INPUT_SIZE);
-
+                    final Bitmap croppedBitmap = getScaleBitmap(bitmap, INPUT_SIZE);
                     final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
                     Log.i(TAG, "startImageClassifier results: " + results);
                     runOnUiThread(new Runnable() {
@@ -541,17 +541,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
      * @throws IOException
      */
     private static Bitmap getScaleBitmap(Bitmap bitmap, int size) throws IOException {
+
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();
-        float scaleWidth = ((float) size) / width;
-        float scaleHeight = ((float) size) / height;
+        int startx = width>height?(width-height)/2:0;
+        int starty = width>height?0:(height-width)/2;
+        int cropSize=width>height?height:width;
 
-
+        float scaleSize = ((float) size) / cropSize;
         Matrix matrix = new Matrix();
-        matrix.postScale(scaleWidth, scaleHeight);
-        return Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true);
+        matrix.postScale(scaleSize, scaleSize);
+            return Bitmap.createBitmap(bitmap, startx, starty, cropSize, cropSize, matrix, true);
     }
-
-
-
 }
